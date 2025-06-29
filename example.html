@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vissonance Example</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        select, button {
+            margin: 5px;
+            padding: 5px;
+        }
+        #fileInput {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="controls">
+        <h3>Vissonance Audio Visualizer</h3>
+        <div>
+            <label for="presetSelect">Preset:</label>
+            <select id="presetSelect">
+                <option value="iris">Iris</option>
+                <option value="barred">Barred</option>
+                <option value="hillfog">Hill Fog</option>
+                <option value="tricentric">Tricentric</option>
+                <option value="fracture">Fracture</option>
+                <option value="siphon">Siphon</option>
+                <option value="silk">Silk</option>
+            </select>
+        </div>
+        <div>
+            <input type="file" id="fileInput" accept="audio/*">
+        </div>
+        <div>
+            <button id="playBtn">Play/Pause</button>
+        </div>
+    </div>
+
+    <!-- Import map for Three.js -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.158.0/build/three.module.js"
+        }
+    }
+    </script>
+
+    <!-- Import as ES modules -->
+    <script type="module">
+        import Vissonance from './lib/index.js';
+        import { getPresets } from './presets/index.js';
+
+        let visualizer = null;
+        let audioContext = null;
+        let audioElement = null;
+        let audioSource = null;
+        
+        const canvas = document.getElementById('canvas');
+        const presetSelect = document.getElementById('presetSelect');
+        const fileInput = document.getElementById('fileInput');
+        const playBtn = document.getElementById('playBtn');
+
+        // Initialize audio context
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+
+        // Initialize visualizer
+        function initVisualizer() {
+            if (visualizer) {
+                visualizer.destroy();
+            }
+
+            // Create visualizer
+            visualizer = Vissonance.createVisualizer(audioContext, canvas, {
+                width: window.innerWidth,
+                height: window.innerHeight
+            });
+
+            // Load default preset
+            const presets = getPresets();
+            const selectedPreset = presets[presetSelect.options[presetSelect.selectedIndex].text];
+            if (selectedPreset) {
+                visualizer.loadPreset(selectedPreset);
+            }
+        }
+
+        // Handle file upload
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                initAudio();
+                
+                // Clean up previous audio
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement = null;
+                }
+                
+                // Create new audio element
+                audioElement = new Audio();
+                audioElement.src = URL.createObjectURL(file);
+                audioElement.crossOrigin = 'anonymous';
+                audioElement.loop = true;
+                
+                // Create audio source
+                if (audioSource) {
+                    audioSource.disconnect();
+                }
+                audioSource = audioContext.createMediaElementSource(audioElement);
+                
+                // Initialize visualizer if not already done
+                if (!visualizer) {
+                    initVisualizer();
+                }
+                
+                // Connect audio to visualizer
+                visualizer.connectAudio(audioSource);
+                
+                // Enable play button
+                playBtn.disabled = false;
+            }
+        });
+
+        // Handle play/pause
+        playBtn.addEventListener('click', function() {
+            if (audioElement) {
+                if (audioElement.paused) {
+                    audioElement.play();
+                    playBtn.textContent = 'Pause';
+                } else {
+                    audioElement.pause();
+                    playBtn.textContent = 'Play';
+                }
+            }
+        });
+
+        // Handle preset change
+        presetSelect.addEventListener('change', function() {
+            if (visualizer) {
+                const presets = getPresets();
+                const selectedPreset = presets[this.options[this.selectedIndex].text];
+                if (selectedPreset) {
+                    visualizer.loadPreset(selectedPreset);
+                }
+            }
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (visualizer) {
+                visualizer.setRendererSize(window.innerWidth, window.innerHeight);
+            }
+        });
+
+        // Initialize with default settings
+        playBtn.disabled = true;
+        
+        // Start with microphone input (optional)
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then(function(stream) {
+                initAudio();
+                
+                const micSource = audioContext.createMediaStreamSource(stream);
+                
+                if (!visualizer) {
+                    initVisualizer();
+                }
+                
+                visualizer.connectAudio(micSource);
+            })
+            .catch(function(err) {
+                console.log('Microphone access denied:', err);
+                // Continue without microphone
+            });
+    </script>
+</body>
+</html> 
